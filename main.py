@@ -15,6 +15,11 @@ from utils import load_data,preprocess_nodefeats,PretrainComDataset,get_augment,
 from model import CSAFModel
 from eval import save_model,generate_batch,calu
 
+def margin_loss(x1,x2,target,margin,reduce):
+    if reduce =='mean':
+        return torch.mean(torch.sqrt(torch.relu(((x2-x1+1)**2-(1-margin)**2))))
+    elif reduce=='sum':
+        return torch.mean(torch.sqrt(torch.relu(((x2 - x1 + 1) ** 2 - (1 - margin) ** 2))))
 
 def train_epoch(args,device,epoch_cnt,model,train_dataloader,optimizer,roll_mapper,pre_dataset,attr):
     t_start = time()
@@ -34,9 +39,12 @@ def train_epoch(args,device,epoch_cnt,model,train_dataloader,optimizer,roll_mapp
             stop_score = batch_result['stop_score']
             pospair = batch_result['pospair']
             negpair = batch_result['negpair']
-            margin = [1] * len(pospair)
-            margin = torch.LongTensor(margin).to(device)
-            rank_loss = torch.nn.functional.margin_ranking_loss(stop_score[pospair], stop_score[negpair], margin, reduce='sum')
+            target = [1] * len(pospair)
+            target = torch.LongTensor(target).to(device)
+            if args.squrank:
+                rank_loss = margin_loss(stop_score[pospair], stop_score[negpair], target,margin=args.margin,reduce=args.reduce)
+            else:
+                rank_loss = torch.nn.functional.margin_ranking_loss(stop_score[pospair], stop_score[negpair], target,margin=args.margin,reduce='sum')
             loss += rank_loss*args.gamma
         loss.backward()
         optimizer.step()
@@ -163,7 +171,7 @@ def preprocess(idx, seed, args, path=None):
 
         if path is not None:
             np.save(path + f'_{idx}_{seed}.npy', result)
-            print(idx, seed, "执行完毕，耗时%0.2f" % (time() - st))
+            print(idx, seed, "time: %0.2f" % (time() - st))
         else:
             return result
     except Exception as ex:
@@ -250,17 +258,17 @@ def main(args):
     global graph
     global nxg
     global conv
+    args.cuda = torch.cuda.is_available()
+    set_seed(args.random_seed, args.cuda)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     graph, train_comms, valid_comms, test_comms, eval_seeds, nodefeats, ds_name, nxg = load_data(args)
     conv = GraphConv(graph)
-    args.cuda = torch.cuda.is_available()
+
     if nodefeats == None or args.with_feature == False:
         attr = None
     else:
         attr = preprocess_nodefeats(conv, nodefeats, args.nfeat)
         attr = torch.from_numpy(attr).to(device).float()
-
-    set_seed(1, args.cuda)
 
     pre_dataset, roll_mapper = load_pre_dataset(args,train_comms)
     now = datetime.datetime.now()
@@ -299,7 +307,7 @@ def main(args):
             avglen = sum([len(com) for com in coms]) / len(coms)
             rf, rj = calu(coms, valid_comms[:args.valid_size])  # train_comms
 
-            f, j = calu(valid_comms + train_comms, coms)  # +train_comms
+            f, j = calu(valid_comms + train_comms, coms)
             print(f'ff:{f:.4f} bf:{rf:.4f} f:{(f + rf) / 2:.4f} avglen:{avglen:.2f} sample time {st:.2f}')
 
 
@@ -330,17 +338,19 @@ def eval(checkpoint):
     global graph
     global nxg
     global conv
+    args.cuda = torch.cuda.is_available()
+    set_seed(args.random_seed, args.cuda)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     graph, train_comms, valid_comms, test_comms, eval_seeds, nodefeats, ds_name, nxg = load_data(args)
     conv = GraphConv(graph)
-    args.cuda = torch.cuda.is_available()
+
     if nodefeats == None or args.with_feature == False:
         attr = None
     else:
         attr = preprocess_nodefeats(conv, nodefeats, args.nfeat)
         attr = torch.from_numpy(attr).to(device).float()
 
-    set_seed(1, args.cuda)
+
 
     model = CSAFModel(args=args,
                       device=device,
@@ -370,6 +380,8 @@ if __name__ == '__main__':
     parser.add_argument('--community_min', type=int, default=3)
     parser.add_argument('--max_neighbor', type=int, default=200)
     parser.add_argument('--eval_path', type=str, default="")
+    parser.add_argument('--eval_seed_mode', type=str, default="max")
+    parser.add_argument('--random_seed', type=int, default=1)
     #########
     parser.add_argument('--cnt_rank', type=int, default=0)
     parser.add_argument('--num_flow_layer', type=int, default=8)
@@ -398,6 +410,9 @@ if __name__ == '__main__':
     parser.add_argument('--m_e', type=int, default=1)
     parser.add_argument('--m_s', type=int, default=2)
     parser.add_argument('--gamma', type=int, default=1)
+    parser.add_argument('--squrank', action='store_true', default=False)
+    parser.add_argument('--margin', type=int, default=0)
+    parser.add_argument('--reduce', type=str, default="sum")
     ##
     parser.add_argument('--log', type=str, default='log.txt')
     parser.add_argument('--result', type=str, default='result.txt')
@@ -427,8 +442,8 @@ if __name__ == '__main__':
             for dataset, args.cnt_rank, args.num_flow_layer, args.dropout, args.suffle, args.rollouts, args.augment, args.neg_num,args.m_s,args.m_e in \
                     zip(datasets, cnt_rank, num_flow_layers, dropouts, suffle, rollout, augment, negnum,m_s_list,m_e_list):
                 if args.dataset == 'facebook':
-                    args.train_size = 25
-                    args.valid_size = 5
+                    args.train_size = 28
+                    args.valid_size = 2
                 else:
                     args.train_size = 450
                     args.valid_size = 50

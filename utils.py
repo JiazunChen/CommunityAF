@@ -53,13 +53,21 @@ def split_comms(graph, comms, train_size,community_min):
     max_size = max(len(x) for x in train_comms + valid_comms + test_comms)
     return train_comms, valid_comms, test_comms, max_size
 
+def choose_seed(mode,x):
+    if mode =='max':
+        return max(x)
+    elif mode =='min':
+        return min(x)
+    else:
+        return np.random.choice(x)
 
 def load_data(args):
     graph, comms, nodefeats, ds_name, nxg = load_dataset(args.root, args.dataset)
     train_comms, valid_comms, test_comms, max_size = split_comms(graph, comms, args.train_size,args.community_min)
     args.ds_name = ds_name
     args.max_size = max_size
-    eval_seeds = [max(x) for x in valid_comms]
+
+    eval_seeds = [choose_seed(args.eval_seed_mode,x) for x in valid_comms] #[max(x) for x in valid_comms] #  [min(x) for x in valid_comms] or  [np.random.choice(x) for x in valid_comms]
     print(f'[{ds_name}] # Nodes: {graph.n_nodes} ', flush=True)
     print(f'[# comms] Train: {len(train_comms)} Valid: {len(valid_comms)} Test: {len(test_comms)}', flush=True)
     return graph, train_comms, valid_comms, test_comms, eval_seeds, nodefeats, ds_name, nxg
