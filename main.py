@@ -28,7 +28,7 @@ def train_epoch(args,device,epoch_cnt,model,train_dataloader,optimizer,roll_mapp
     batch_cnt = 0
     for i_batch, batch_data in (enumerate(train_dataloader)):
 
-        print('batch_data', batch_data[:3])
+        #print('batch_data', batch_data[:3])
         batch_data = get_data(batch_data.tolist(),args,roll_mapper,pre_dataset)
         optimizer.zero_grad()
         batch_cnt += 1
@@ -305,16 +305,14 @@ def main(args):
                                   stop=args.stopmode, decline=args.m_s)
             st = time() - st
             avglen = sum([len(com) for com in coms]) / len(coms)
-            rf, rj = calu(coms, valid_comms[:args.valid_size])  # train_comms
-
-            f, j = calu(valid_comms + train_comms, coms)
-            print(f'ff:{f:.4f} bf:{rf:.4f} f:{(f + rf) / 2:.4f} avglen:{avglen:.2f} sample time {st:.2f}')
+            f, j = calu(valid_comms , coms)
+            print(f'f:{f:.4f}  best_f {best_f:.4f}  avglen:{avglen:.2f} sample time {st:.2f}')
 
 
-            if (rf + f) / 2 > best_f:
+            if f > best_f:
                 with open(args.log, 'a+') as file:
-                    print(f' dataset = {args.dataset} ', epoch, args.dataset, f, rf, (rf + f) / 2, file=file)
-                best_f = (rf + f) / 2
+                    print(f' dataset = {args.dataset} ', epoch, args.dataset, f, file=file)
+                best_f =f
                 best_e = epoch
                 print('save')
                 var_list = {
@@ -325,8 +323,8 @@ def main(args):
 
     with open(args.result, 'a') as f:
         print(args,file=f)
-        print(f'save_path ={save_path} best_f,p,r,e\n', best_f, best_e, file=f)
-        print('best_f,p,r,e', best_f, best_e)
+        print(f'save_path ={save_path} best_f,e\n', best_f, best_e, file=f)
+        print('best_f,e', best_f, best_e)
 
 
 
@@ -425,6 +423,7 @@ if __name__ == '__main__':
     parser.add_argument('--default_parameters', action='store_true', default=False)
 
     args = parser.parse_args( )  # facebook
+    args.multiprocessing = False
     if os.path.exists('./result') == False:
         os.mkdir('result')
     if args.eval_path=="":
