@@ -423,7 +423,7 @@ if __name__ == '__main__':
     parser.add_argument('--default_parameters', action='store_true', default=False)
 
     args = parser.parse_args( )  # facebook
-    args.multiprocessing = False
+    #args.multiprocessing = False
     if os.path.exists('./result') == False:
         os.mkdir('result')
     if args.eval_path=="":
